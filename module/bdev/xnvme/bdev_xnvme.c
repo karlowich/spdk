@@ -24,7 +24,13 @@
 
 struct bdev_xnvme_io_channel {
 	struct xnvme_queue	*queue;
-	struct spdk_poller	*poller;
+  struct bdev_xnvme_group_channel *group_ch;
+  TAILQ_ENTRY(bdev_xnvme_io_channel) link;
+};
+
+struct bdev_xnvme_group_channel {
+  struct spdk_poller *poller;
+  TAILQ_HEAD(, bdev_xnvme_io_channel) io_ch_head;
 };
 
 struct bdev_xnvme_task {
@@ -261,16 +267,21 @@ bdev_xnvme_cmd_cb(struct xnvme_cmd_ctx *ctx, void *cb_arg)
 static int
 bdev_xnvme_poll(void *arg)
 {
-	struct bdev_xnvme_io_channel *ch = arg;
+	struct bdev_xnvme_group_channel *group_ch = arg;
+  struct bdev_xnvme_io_channel *io_ch;
+  int total_outstanding = 0;
 	int rc;
 
-	rc = xnvme_queue_poke(ch->queue, 0);
-	if (rc < 0) {
-		SPDK_ERRLOG("xnvme_queue_poke failure rc : %d\n", rc);
-		return SPDK_POLLER_BUSY;
-	}
+  TAILQ_FOREACH(io_ch, &group_ch->io_ch_head, link) {
+    rc = xnvme_queue_poke(io_ch->queue, 0);
+    if (rc < 0) {
+      SPDK_ERRLOG("xnvme_queue_poke failure rc : %d\n", rc);
+      return SPDK_POLLER_BUSY;
+    }
+    total_outstanding += xnvme_queue_get_outstanding(io_ch->queue);
+  }
 
-	return xnvme_queue_get_outstanding(ch->queue) ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
+	return total_outstanding > 0 ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
 }
 
 static int
@@ -289,7 +300,8 @@ bdev_xnvme_queue_create_cb(void *io_device, void *ctx_buf)
 
 	xnvme_queue_set_cb(ch->queue, bdev_xnvme_cmd_cb, ch);
 
-	ch->poller = SPDK_POLLER_REGISTER(bdev_xnvme_poll, ch, 0);
+  ch->group_ch = spdk_io_channel_get_ctx(spdk_get_io_channel(&xnvme_if));
+  TAILQ_INSERT_TAIL(&ch->group_ch->io_ch_head, ch, link);
 
 	return 0;
 }
@@ -299,9 +311,33 @@ bdev_xnvme_queue_destroy_cb(void *io_device, void *ctx_buf)
 {
 	struct bdev_xnvme_io_channel *ch = ctx_buf;
 
-	spdk_poller_unregister(&ch->poller);
+  xnvme_queue_term(ch->queue);
 
-	xnvme_queue_term(ch->queue);
+  assert(ch->group_ch);
+  TAILQ_REMOVE(&ch->group_ch->io_ch_head, ch, link);
+
+  spdk_put_io_channel(spdk_io_channel_from_ctx(ch->group_ch));
+}
+
+static int
+bdev_xnvme_group_create_cb(void *io_device, void *ctx_buf)
+{
+  struct bdev_xnvme_group_channel *ch = ctx_buf;
+
+  TAILQ_INIT(&ch->io_ch_head);
+  ch->poller = SPDK_POLLER_REGISTER(bdev_xnvme_poll, ch, 0);
+
+  return 0;
+}
+
+static void
+bdev_xnvme_group_destroy_cb(void *io_device, void *ctx_buf)
+{
+  struct bdev_xnvme_group_channel *ch = ctx_buf;
+  if (!TAILQ_EMPTY(&ch->io_ch_head)) {
+    SPDK_ERRLOG("Group channel of bdev xnvme has uncleared io channel\n");
+  }
+  spdk_poller_unregister(&ch->poller);
 }
 
 struct spdk_bdev *
@@ -428,21 +464,10 @@ delete_xnvme_bdev(const char *name, spdk_bdev_unregister_cb cb_fn, void *cb_arg)
 }
 
 static int
-bdev_xnvme_module_create_cb(void *io_device, void *ctx_buf)
-{
-	return 0;
-}
-
-static void
-bdev_xnvme_module_destroy_cb(void *io_device, void *ctx_buf)
-{
-}
-
-static int
 bdev_xnvme_init(void)
 {
-	spdk_io_device_register(&xnvme_if, bdev_xnvme_module_create_cb, bdev_xnvme_module_destroy_cb,
-				0, "xnvme_module");
+	spdk_io_device_register(&xnvme_if, bdev_xnvme_group_create_cb, bdev_xnvme_group_destroy_cb,
+                          sizeof(struct bdev_xnvme_group_channel), "xnvme_module");
 
 	return 0;
 }
