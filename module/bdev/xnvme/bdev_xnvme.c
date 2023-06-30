@@ -269,7 +269,7 @@ bdev_xnvme_poll(void *arg)
 {
 	struct bdev_xnvme_group_channel *group_ch = arg;
   struct bdev_xnvme_io_channel *io_ch;
-  int total_outstanding = 0;
+  int nr = 0;
 	int rc;
 
   TAILQ_FOREACH(io_ch, &group_ch->io_ch_head, link) {
@@ -278,10 +278,10 @@ bdev_xnvme_poll(void *arg)
       SPDK_ERRLOG("xnvme_queue_poke failure rc : %d\n", rc);
       return SPDK_POLLER_BUSY;
     }
-    total_outstanding += xnvme_queue_get_outstanding(io_ch->queue);
+    nr += rc;
   }
 
-	return total_outstanding > 0 ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
+	return nr > 0 ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
 }
 
 static int
