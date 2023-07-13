@@ -290,7 +290,7 @@ bdev_xnvme_queue_create_cb(void *io_device, void *ctx_buf)
 	struct bdev_xnvme *xnvme = io_device;
 	struct bdev_xnvme_io_channel *ch = ctx_buf;
 	int rc;
-	int qd = 512;
+	int qd = 128;
 
 	rc = xnvme_queue_init(xnvme->dev, qd, 0, &ch->queue);
 	if (rc) {
