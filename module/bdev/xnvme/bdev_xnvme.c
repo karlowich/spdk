@@ -270,7 +270,7 @@ bdev_xnvme_poll(void *arg)
 		return SPDK_POLLER_BUSY;
 	}
 
-	return xnvme_queue_get_outstanding(ch->queue) ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
+	return rc > 0 ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;
 }
 
 static int
