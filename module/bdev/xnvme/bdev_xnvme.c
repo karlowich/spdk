@@ -266,7 +266,6 @@ bdev_xnvme_poll(void *arg)
 
 	rc = xnvme_queue_poke(ch->queue, 0);
 	if (rc < 0) {
-		SPDK_ERRLOG("xnvme_queue_poke failure rc : %d\n", rc);
 		return SPDK_POLLER_BUSY;
 	}
 
