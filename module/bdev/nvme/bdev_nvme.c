@@ -4000,6 +4000,10 @@ nvme_disk_create(struct spdk_bdev *disk, const char *base_name,
 		disk->max_open_zones = spdk_nvme_zns_ns_get_max_open_zones(ns);
 		disk->max_active_zones = spdk_nvme_zns_ns_get_max_active_zones(ns);
 		break;
+	case SPDK_NVME_CSI_KV:
+		disk->product_name = "NVMe KV disk";
+		disk->kv = true;
+		break;
 	default:
 		SPDK_ERRLOG("unsupported CSI: %u\n", csi);
 		return -ENOTSUP;

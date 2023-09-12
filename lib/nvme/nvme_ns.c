@@ -492,6 +492,8 @@ nvme_ns_has_supported_iocs_specific_data(struct spdk_nvme_ns *ns)
 		return false;
 	case SPDK_NVME_CSI_ZNS:
 		return true;
+	case SPDK_NVME_CSI_KV:
+		return false;
 	default:
 		SPDK_WARNLOG("Unsupported CSI: %u for NSID: %u\n", ns->csi, ns->id);
 		return false;
