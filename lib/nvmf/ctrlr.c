@@ -345,7 +345,7 @@ nvmf_subsys_has_multi_iocs(struct spdk_nvmf_subsystem *subsystem)
 
 	for (i = 0; i < subsystem->max_nsid; i++) {
 		ns = subsystem->ns[i];
-		if (ns && ns->bdev && spdk_bdev_is_zoned(ns->bdev)) {
+		if (ns && ns->bdev && (spdk_bdev_is_zoned(ns->bdev) || spdk_bdev_is_kv(ns->bdev))) {
 			return true;
 		}
 	}
@@ -4305,6 +4305,8 @@ nvmf_ctrlr_process_io_cmd(struct spdk_nvmf_request *req)
 	if (spdk_nvmf_request_using_zcopy(req)) {
 		assert(req->zcopy_phase == NVMF_ZCOPY_PHASE_INIT);
 		return nvmf_bdev_ctrlr_zcopy_start(bdev, desc, ch, req);
+	} else if (ns->csi == SPDK_NVME_CSI_KV) {
+		return nvmf_bdev_ctrlr_nvme_passthru_io(bdev, desc, ch, req);
 	} else {
 		switch (cmd->opc) {
 		case SPDK_NVME_OPC_READ:

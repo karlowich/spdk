@@ -1827,6 +1827,11 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 		subsystem->max_zone_append_size_kib = max_zone_append_size_kib;
 	}
 
+	if (spdk_bdev_is_kv(ns->bdev)) {
+		SPDK_DEBUGLOG(nvmf, "The added namespace is backed by a KV block device.\n");
+		ns->csi = SPDK_NVME_CSI_KV;
+	}
+
 	ns->opts = opts;
 	ns->subsystem = subsystem;
 	subsystem->ns[opts.nsid - 1] = ns;
