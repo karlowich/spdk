@@ -686,6 +686,14 @@ bool spdk_bdev_is_md_interleaved(const struct spdk_bdev *bdev);
 bool spdk_bdev_is_md_separate(const struct spdk_bdev *bdev);
 
 /**
+ * Checks if bdev supports KV namespace semantics.
+ *
+ * \param bdev Block device to query.
+ * \return true if device supports KV namespace semantics.
+ */
+bool spdk_bdev_is_kv(const struct spdk_bdev *bdev);
+
+/**
  * Checks if bdev supports zoned namespace semantics.
  *
  * \param bdev Block device to query.

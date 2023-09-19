@@ -4688,6 +4688,12 @@ spdk_bdev_is_md_separate(const struct spdk_bdev *bdev)
 }
 
 bool
+spdk_bdev_is_kv(const struct spdk_bdev *bdev)
+{
+	return bdev->kv;
+}
+
+bool
 spdk_bdev_is_zoned(const struct spdk_bdev *bdev)
 {
 	return bdev->zoned;

@@ -3087,6 +3087,9 @@ nvmf_ctrlr_identify_iocs(struct spdk_nvmf_ctrlr *ctrlr,
 		if (spdk_bdev_is_zoned(ns->bdev)) {
 			vector->zns = 1;
 		}
+		if (spdk_bdev_is_kv(ns->bdev)){
+			vector->kv = 1;
+		}
 	}
 
 	rsp->status.sct = SPDK_NVME_SCT_GENERIC;

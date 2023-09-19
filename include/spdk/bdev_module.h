@@ -553,6 +553,11 @@ struct spdk_bdev {
 	uint32_t dif_check_flags;
 
 	/**
+	 * Specify whether bdev is kv device.
+	 */
+	bool kv;
+
+	/**
 	 * Specify whether bdev is zoned device.
 	 */
 	bool zoned;
