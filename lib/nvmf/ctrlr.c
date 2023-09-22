@@ -52,6 +52,7 @@ struct spdk_nvmf_custom_admin_cmd {
 };
 
 static struct spdk_nvmf_custom_admin_cmd g_nvmf_custom_admin_cmd_hdlrs[SPDK_NVME_MAX_OPC + 1];
+static int nvmf_passthru_admin_cmd(struct spdk_nvmf_request *req);
 
 static void _nvmf_request_complete(void *ctx);
 
@@ -3102,6 +3103,9 @@ nvmf_ctrlr_identify(struct spdk_nvmf_request *req)
 		break;
 	case SPDK_NVME_IDENTIFY_CTRLR_IOCS:
 		ret = spdk_nvmf_ctrlr_identify_iocs_specific(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
+		break;
+	case SPDK_NVME_IDENTIFY_IOCS:
+		ret = nvmf_passthru_admin_cmd(req);
 		break;
 	default:
 		goto invalid_cns;
