@@ -55,6 +55,7 @@ static struct spdk_nvmf_custom_admin_cmd g_nvmf_custom_admin_cmd_hdlrs[SPDK_NVME
 
 static void _nvmf_request_complete(void *ctx);
 int nvmf_passthru_admin_cmd_for_ctrlr(struct spdk_nvmf_request *req, struct spdk_nvmf_ctrlr *ctrlr);
+static int nvmf_passthru_admin_cmd(struct spdk_nvmf_request *req);
 
 static inline void
 nvmf_invalid_connect_response(struct spdk_nvmf_fabric_connect_rsp *rsp,
@@ -3147,10 +3148,18 @@ nvmf_ctrlr_identify(struct spdk_nvmf_request *req)
 				tmpbuf, req->length);
 		break;
 	case SPDK_NVME_IDENTIFY_NS_IOCS:
-		ret = spdk_nvmf_ns_identify_iocs_specific(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
+		if (cmd->cdw11_bits.identify.csi == SPDK_NVME_CSI_KV) {
+			ret = nvmf_passthru_admin_cmd(req);
+		} else {
+			ret = spdk_nvmf_ns_identify_iocs_specific(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
+		}
 		break;
 	case SPDK_NVME_IDENTIFY_CTRLR_IOCS:
-		ret = spdk_nvmf_ctrlr_identify_iocs_specific(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
+		if (cmd->cdw11_bits.identify.csi == SPDK_NVME_CSI_KV) {
+			ret = nvmf_passthru_admin_cmd_for_ctrlr(req, ctrlr);
+		} else {
+			ret = spdk_nvmf_ctrlr_identify_iocs_specific(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
+		}
 		break;
 	case SPDK_NVME_IDENTIFY_IOCS:
 		ret = nvmf_ctrlr_identify_iocs(ctrlr, cmd, rsp, (void *)&tmpbuf, req->length);
