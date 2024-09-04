@@ -39,8 +39,24 @@ struct bdev_xnvme {
 	struct xnvme_dev	*dev;
 	uint32_t		nsid;
 	bool			conserve_cpu;
+	bool fixed_bufs;
 
 	TAILQ_ENTRY(bdev_xnvme) link;
+};
+
+struct bdevperf_task {
+	struct iovec			iov;
+	struct bdevperf_job		*job;
+	struct spdk_bdev_io		*bdev_io;
+	void				*buf;
+	void				*verify_buf;
+	void				*md_buf;
+	uint64_t			offset_blocks;
+	struct bdevperf_task		*task_to_abort;
+	enum spdk_bdev_io_type		io_type;
+	TAILQ_ENTRY(bdevperf_task)	link;
+	struct spdk_bdev_io_wait_entry	bdev_io_wait;
+	int index;
 };
 
 static int bdev_xnvme_init(void);
@@ -69,6 +85,7 @@ bdev_xnvme_config_json(struct spdk_json_write_ctx *w)
 		spdk_json_write_named_string(w, "filename", xnvme->filename);
 		spdk_json_write_named_string(w, "io_mechanism", xnvme->io_mechanism);
 		spdk_json_write_named_bool(w, "conserve_cpu", xnvme->conserve_cpu);
+		spdk_json_write_named_bool(w, "fixed_bufs", xnvme->fixed_bufs);
 		spdk_json_write_object_end(w);
 
 		spdk_json_write_object_end(w);
@@ -168,8 +185,23 @@ _xnvme_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io)
 	xnvme_task->ch = xnvme_ch;
 	ctx->async.cb_arg = xnvme_task;
 
-	err = xnvme_cmd_passv(ctx, bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+	if (xnvme->fixed_bufs) {
+		if (bdev_io->u.bdev.iovcnt == 1) {
+			int index = ((struct bdevperf_task *) bdev_io->internal.caller_ctx)->index;
+			err = xnvme_cmd_pass(ctx, bdev_io->u.bdev.iovs[0].iov_base,
+					     bdev_io->u.bdev.iovs[0].iov_len, NULL, index);
+		} else {
+			err = xnvme_cmd_passv(ctx, bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+					      0, NULL, 0, 0);
+			if (!err) {
+				xnvme_queue_put_cmd_ctx(xnvme_ch->queue, ctx);
+				spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
+			}
+		}
+	} else {
+		err = xnvme_cmd_passv(ctx, bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
 			      bdev_io->u.bdev.num_blocks * xnvme->bdev.blocklen, NULL, 0, 0);
+	}
 
 	switch (err) {
 	/* Submission success! */
@@ -322,7 +354,7 @@ bdev_xnvme_queue_destroy_cb(void *io_device, void *ctx_buf)
 
 struct spdk_bdev *
 create_xnvme_bdev(const char *name, const char *filename, const char *io_mechanism,
-		  bool conserve_cpu)
+		  bool conserve_cpu, bool fixed_bufs)
 {
 	struct bdev_xnvme *xnvme;
 	uint32_t block_size;
@@ -347,14 +379,10 @@ create_xnvme_bdev(const char *name, const char *filename, const char *io_mechani
 	}
 
 	if (!conserve_cpu) {
-		if (!strcmp(xnvme->io_mechanism, "libaio")) {
 			opts.poll_io = 1;
-		} else if (!strcmp(xnvme->io_mechanism, "io_uring")) {
-			opts.poll_io = 1;
-		} else if (!strcmp(xnvme->io_mechanism, "io_uring_cmd")) {
-			opts.poll_io = 1;
-		}
 	}
+
+	xnvme->fixed_bufs = fixed_bufs;
 
 	xnvme->filename = strdup(filename);
 	if (!xnvme->filename) {

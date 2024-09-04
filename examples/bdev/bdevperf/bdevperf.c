@@ -38,6 +38,7 @@ struct bdevperf_task {
 	enum spdk_bdev_io_type		io_type;
 	TAILQ_ENTRY(bdevperf_task)	link;
 	struct spdk_bdev_io_wait_entry	bdev_io_wait;
+	int index;
 };
 
 static char *g_workload_type = NULL;
@@ -73,6 +74,7 @@ static const char *g_bdevperf_conf_file = NULL;
 static double g_zipf_theta;
 static bool g_random_map = false;
 static bool g_unique_writes = false;
+static bool g_fixed_bufs = false;
 
 static struct spdk_cpuset g_all_cpuset;
 static struct spdk_poller *g_perf_timer = NULL;
@@ -1651,8 +1653,25 @@ _get_next_core(void)
 }
 
 static void
+fixed_bufs_complete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
+	struct bdevperf_job	*job;
+	job = (struct bdevperf_job *) cb_arg;
+	job->current_queue_depth--;
+
+	if (success) {
+		job->io_completed++;
+	} else {
+		job->io_failed++;
+	}
+
+	spdk_bdev_free_io(bdev_io);
+}
+
+static void
 _bdevperf_construct_job(void *ctx)
 {
+	struct bdevperf_task *task;
+	struct iovec *iovecs;
 	struct bdevperf_job *job = ctx;
 	int rc;
 
@@ -1681,6 +1700,23 @@ _bdevperf_construct_job(void *ctx)
 		g_run_rc = -ENOMEM;
 		goto end;
 	}
+
+	iovecs = calloc(job->queue_depth, sizeof(struct iovec));
+
+	TAILQ_FOREACH(task, &job->task_list, link) {
+		struct iovec *iov = &iovecs[task->index];
+		iov->iov_base = task->buf;
+		iov->iov_len = job->buf_size;
+	}
+	
+	if (g_fixed_bufs) {
+		rc = spdk_bdev_readv_blocks_with_md(job->bdev_desc, job->ch, iovecs, job->queue_depth, NULL, 0, 0, fixed_bufs_complete, job);
+		if (rc) {
+			g_run_rc = rc;
+		}
+	}
+
+	free(iovecs);
 
 end:
 	spdk_thread_send_msg(g_main_thread, _bdevperf_construct_job_done, NULL);
@@ -1911,6 +1947,7 @@ bdevperf_construct_job(struct spdk_bdev *bdev, struct job_config *config,
 			}
 		}
 
+		task->index = n;
 		task->job = job;
 		TAILQ_INSERT_TAIL(&job->task_list, task, link);
 	}
@@ -2676,6 +2713,8 @@ bdevperf_parse_arg(int ch, char *arg)
 		g_io_size = (int)size;
 	} else if (ch == 'U') {
 		g_unique_writes = true;
+	} else if (ch == 'a') {
+		g_fixed_bufs = true;
 	} else {
 		tmp = spdk_strtoll(arg, 10);
 		if (tmp < 0) {
@@ -2865,7 +2904,7 @@ main(int argc, char **argv)
 	opts.rpc_addr = NULL;
 	opts.shutdown_cb = spdk_bdevperf_shutdown_cb;
 
-	if ((rc = spdk_app_parse_args(argc, argv, &opts, "Zzfq:o:t:w:k:CEF:J:M:P:S:T:Xlj:DU", NULL,
+	if ((rc = spdk_app_parse_args(argc, argv, &opts, "Zzfq:o:t:w:k:CEF:J:M:P:S:T:Xlj:DU:a", NULL,
 				      bdevperf_parse_arg, bdevperf_usage)) !=
 	    SPDK_APP_PARSE_ARGS_SUCCESS) {
 		return rc;

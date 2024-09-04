@@ -15,7 +15,7 @@ all:
 		-Dwith-libaio=enabled \
 		-Dwith-liburing=enabled \
 		-Dwith-libvfn=disabled \
-		-Dwith-spdk=false && \
+		-Dwith-spdk=disabled && \
 		meson compile -C builddir && \
 		cd -)
 
